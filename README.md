@@ -80,5 +80,9 @@ diff src/lib/content-schema.ts ../arditransportation/src/lib/content-schema.ts
   `arditransportation/` (override with `CLOUDINARY_ROOT_FOLDER`). The client sends
   only `"gallery"` or `"fleet"` — the server builds the full path, so a caller
   can't write outside that root.
-- Set `ADMIN_UIDS` to restrict uploads to specific accounts. Left blank, any
-  account in the Firebase project may upload.
+- `ADMIN_UIDS` lists the accounts allowed to upload, and **fails closed** — blank
+  denies everyone. A valid Firebase session alone is not enough: the web API key
+  is public, so unless sign-up is disabled in the Firebase console anyone holding
+  it can self-register and obtain a real ID token.
+- Turn off *Enable create (sign-up)* in Firebase Console → Authentication →
+  Settings. Accounts are created by hand, so this costs nothing.

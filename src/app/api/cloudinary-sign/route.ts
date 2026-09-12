@@ -70,9 +70,14 @@ async function verifyIdToken(idToken: string): Promise<string | null> {
 }
 
 /**
- * Optional second gate. With no ADMIN_UIDS set, any account in the Firebase
- * project may upload — which is fine, because accounts are created by hand and
- * there is no public sign-up.
+ * The accounts permitted to upload.
+ *
+ * This gate is not optional, and an empty list denies everyone. Holding a valid
+ * session for the Firebase project is NOT sufficient on its own: the web API key
+ * is public by design, and unless sign-up is disabled in the Firebase console
+ * anyone holding it can self-register an account and obtain a real ID token.
+ * Without this list, that token would be enough to upload to the Cloudinary
+ * account.
  */
 function allowList(): string[] {
   return (process.env.ADMIN_UIDS ?? "")
@@ -129,7 +134,22 @@ export async function POST(request: Request) {
   }
 
   const allowed = allowList();
-  if (allowed.length > 0 && !allowed.includes(uid)) {
+  if (allowed.length === 0) {
+    console.error(
+      "[cloudinary-sign] ADMIN_UIDS is empty — refusing every upload. " +
+        `Set ADMIN_UIDS=${uid} in the environment to allow this account.`
+    );
+    return NextResponse.json(
+      {
+        error:
+          `Uploads are disabled because ADMIN_UIDS is not set. Add ` +
+          `ADMIN_UIDS=${uid} to .env.local and restart the server.`,
+      },
+      { status: 403 }
+    );
+  }
+
+  if (!allowed.includes(uid)) {
     // The caller has already proven they hold a valid session for this project,
     // so naming their own UID leaks nothing and saves a console trip.
     console.error(
@@ -139,9 +159,9 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          `This account (${uid}) is not in ADMIN_UIDS. Add it to .env.local, ` +
-          `or clear ADMIN_UIDS to allow any account in the Firebase project, ` +
-          `then restart the server.`,
+          `This account (${uid}) is not in ADMIN_UIDS. Add it to the ` +
+          `comma-separated list in .env.local and restart the server. ` +
+          `Clearing ADMIN_UIDS does not help — blank denies everyone.`,
       },
       { status: 403 }
     );
