@@ -1,0 +1,93 @@
+{
+  "contact": {
+    "phoneDisplay": "(858) 288-1777",
+    "phoneHref": "8582881777",
+    "hours": "24 / 7 — Always Available",
+    "email": ""
+  },
+  "address": {
+    "name": "Carolino Business Center",
+    "street": "3035 E 8th Street",
+    "cityStateZip": "National City, CA 91950"
+  },
+  "social": {
+    "facebookUrl": "https://www.facebook.com/arditransportation",
+    "facebookHandle": "arditransportation"
+  },
+  "gallery": [
+    {
+      "id": "client-1",
+      "src": "/clients/client-1.jpeg",
+      "caption": "Family pickup — Heading to LAX from San Diego"
+    },
+    {
+      "id": "client-2",
+      "src": "/clients/client-2.jpeg",
+      "caption": "LAX drop-off — Smooth ride, all smiles"
+    },
+    {
+      "id": "client-3",
+      "src": "/clients/client-3.jpeg",
+      "caption": "Brothers Mason & friends — LAX arrival"
+    },
+    {
+      "id": "client-4",
+      "src": "/clients/client-4.jpeg",
+      "caption": "Group transfer — Luggage loaded, ready to roll"
+    },
+    {
+      "id": "client-5",
+      "src": "/clients/client-5.jpeg",
+      "caption": "Travel party at LAX — Safe arrival"
+    },
+    {
+      "id": "client-6",
+      "src": "/clients/client-6.jpeg",
+      "caption": "Door-to-door pickup — Bags, boxes, and balikbayan loaded"
+    },
+    {
+      "id": "client-7",
+      "src": "/clients/client-7.jpeg",
+      "caption": "Couple's getaway — Van loaded, LAX bound"
+    },
+    {
+      "id": "client-8",
+      "src": "/clients/client-8.jpeg",
+      "caption": "LAX arrival — Carts full, smiles wider"
+    },
+    {
+      "id": "client-9",
+      "src": "/clients/client-9.jpeg",
+      "caption": "Group of 8 — Plenty of room for everyone"
+    }
+  ],
+  "fleet": [
+    {
+      "id": "camry",
+      "src": "/vehicles/toyota-camry.png",
+      "name": "Toyota Camry SE",
+      "type": "Executive Sedan",
+      "capacity": "Up to 3 passengers",
+      "tag": "Most Popular",
+      "imgSize": "small"
+    },
+    {
+      "id": "ml350",
+      "src": "/vehicles/mercedes-ml350-dark.png",
+      "name": "Mercedes Benz ML350",
+      "type": "Premium SUV",
+      "capacity": "Up to 4 passengers",
+      "tag": "Premium",
+      "imgSize": "large"
+    },
+    {
+      "id": "transit",
+      "src": "/vehicles/ford-transit-dark.png",
+      "name": "Ford Transit 350",
+      "type": "Group Van",
+      "capacity": "Up to 14 passengers",
+      "tag": "Group Rides",
+      "imgSize": "large"
+    }
+  ]
+}

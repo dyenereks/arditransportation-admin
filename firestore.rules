@@ -1,0 +1,28 @@
+rules_version = '2';
+
+// Content is public marketing copy: anyone may read it (the website fetches it
+// unauthenticated), but only signed-in admins may write.
+//
+// Deploy:  firebase deploy --only firestore:rules
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Allow-list of accounts that may edit the site.
+    // Add each admin's UID (Firebase Console → Authentication → Users).
+    function isAdmin() {
+      return request.auth != null && request.auth.uid in [
+        'REPLACE_WITH_YOUR_ADMIN_UID'
+      ];
+    }
+
+    match /site/content {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Nothing else is reachable.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
