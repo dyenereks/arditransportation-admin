@@ -8,6 +8,7 @@ Manages:
 - **Contact & Location** — phone (displayed + dialed), hours, email, office address
 - **Gallery** — the "Happy Clients" carousel: photos, captions, order
 - **Fleet** — vehicle cards: photos, name, class, capacity, badge, photo size
+- **Users** — add and remove admins, reset their passwords, change your own
 - **Facebook** — page URL and handle
 
 ## Stack
@@ -68,7 +69,11 @@ diff src/lib/content-schema.ts ../arditransportation/src/lib/content-schema.ts
 
 ## Security model
 
-- No public sign-up. Accounts are created by hand in the Firebase console.
+- No public sign-up. Accounts are created from the Users screen by an existing
+  admin (or `npm run grant-admin` for the very first one).
+- **Access is data, not configuration.** A document in the `admins` collection
+  grants it; the security rules and the API routes both check that one place.
+  Nothing has to be redeployed to add or remove someone.
 - `firestore.rules` allows writes only from an allow-list of UIDs, and reads by
   anyone (the content is public marketing copy).
 - Image uploads are **signed server-side** (`/api/cloudinary-sign`). The route
@@ -80,9 +85,11 @@ diff src/lib/content-schema.ts ../arditransportation/src/lib/content-schema.ts
   `arditransportation/` (override with `CLOUDINARY_ROOT_FOLDER`). The client sends
   only `"gallery"` or `"fleet"` — the server builds the full path, so a caller
   can't write outside that root.
-- `ADMIN_UIDS` lists the accounts allowed to upload, and **fails closed** — blank
-  denies everyone. A valid Firebase session alone is not enough: the web API key
-  is public, so unless sign-up is disabled in the Firebase console anyone holding
-  it can self-register and obtain a real ID token.
+- A valid Firebase session alone is never enough: the web API key is public, so
+  a token only proves "some account in this project". Every protected route
+  calls `requireAdmin`, which verifies the token with the Admin SDK *and*
+  requires an `admins` document.
 - Turn off *Enable create (sign-up)* in Firebase Console → Authentication →
-  Settings. Accounts are created by hand, so this costs nothing.
+  Settings. Accounts are created through the app, so this costs nothing.
+- `FIREBASE_SERVICE_ACCOUNT` bypasses all security rules. Server-only, never
+  committed, never `NEXT_PUBLIC_`.

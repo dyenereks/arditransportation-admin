@@ -1,29 +1,32 @@
 rules_version = '2';
 
 // Content is public marketing copy: anyone may read it (the website fetches it
-// unauthenticated), but only signed-in admins may write.
+// unauthenticated), but only admins may write.
+//
+// Who counts as an admin is DATA, not configuration — a document in /admins
+// keyed by the account's UID. That is what makes the Users screen work: adding
+// someone is a write, not a rules edit and a redeploy.
 //
 // Deploy:  firebase deploy --only firestore:rules
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Allow-list of accounts that may edit the site.
-    // Add each admin's UID (Firebase Console → Authentication → Users).
-    //
-    // This is NOT the same list as ADMIN_UIDS in the admin app's environment:
-    // this one governs saving content, ADMIN_UIDS governs uploading images.
-    // Recreating an account gives it a NEW UID — update both lists when you do,
-    // or saves start failing with "Missing or insufficient permissions" while
-    // uploads keep working.
     function isAdmin() {
-      return request.auth != null && request.auth.uid in [
-        'REPLACE_WITH_YOUR_ADMIN_UID'
-      ];
+      return request.auth != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
     match /site/content {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // Admins can see who else has access, but membership is only ever changed
+    // through /api/users, which runs with the service account and enforces the
+    // invariants a rule cannot — such as refusing to remove the last admin.
+    match /admins/{uid} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     // Nothing else is reachable.

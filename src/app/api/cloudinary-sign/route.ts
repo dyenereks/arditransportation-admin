@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { isFailure, requireAdmin } from "@/lib/require-admin";
 
 /**
- * Hands out a short-lived Cloudinary upload signature — but only to someone
- * holding a valid Firebase session for this project.
+ * Hands out a short-lived Cloudinary upload signature — but only to an admin.
  *
  * The alternative, an unsigned upload preset, would sit in the public JS bundle
  * and let anyone on the internet upload to the account. Here the API secret
@@ -28,64 +28,6 @@ const ROOT_FOLDER = process.env.CLOUDINARY_ROOT_FOLDER || "arditransportation";
 
 const fullFolder = (folder: Folder) => `${ROOT_FOLDER}/${folder}`;
 
-/**
- * Confirm the ID token is real and belongs to our Firebase project.
- *
- * Uses Firebase's own REST endpoint rather than firebase-admin: it needs no
- * service-account key, and a forged or expired token simply fails here.
- * Returns the caller's UID, or null.
- */
-async function verifyIdToken(idToken: string): Promise<string | null> {
-  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-  if (!apiKey) {
-    console.error("[cloudinary-sign] NEXT_PUBLIC_FIREBASE_API_KEY is not set");
-    return null;
-  }
-
-  const res = await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ idToken }),
-      cache: "no-store",
-    }
-  );
-
-  if (!res.ok) {
-    // Surfaced in the server log so a misconfigured key or a restricted API
-    // doesn't look the same as a plain expired session.
-    const body = (await res.json().catch(() => ({}))) as {
-      error?: { message?: string };
-    };
-    console.error(
-      `[cloudinary-sign] token lookup failed (${res.status}): ` +
-        `${body.error?.message ?? "no detail"}`
-    );
-    return null;
-  }
-
-  const body = (await res.json()) as { users?: { localId?: string }[] };
-  return body.users?.[0]?.localId ?? null;
-}
-
-/**
- * The accounts permitted to upload.
- *
- * This gate is not optional, and an empty list denies everyone. Holding a valid
- * session for the Firebase project is NOT sufficient on its own: the web API key
- * is public by design, and unless sign-up is disabled in the Firebase console
- * anyone holding it can self-register an account and obtain a real ID token.
- * Without this list, that token would be enough to upload to the Cloudinary
- * account.
- */
-function allowList(): string[] {
-  return (process.env.ADMIN_UIDS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 export async function POST(request: Request) {
   const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
   const apiKey = process.env.CLOUDINARY_API_KEY;
@@ -102,69 +44,19 @@ export async function POST(request: Request) {
     );
   }
 
-  let idToken: unknown;
+  // Same allow-list that governs saving content: a document in `admins`.
+  const caller = await requireAdmin(request);
+  if (isFailure(caller)) return caller.response;
+
   let folder: unknown;
   try {
-    ({ idToken, folder } = (await request.json()) as {
-      idToken?: unknown;
-      folder?: unknown;
-    });
+    ({ folder } = (await request.json()) as { folder?: unknown });
   } catch {
     return NextResponse.json({ error: "Malformed request." }, { status: 400 });
   }
 
   if (!FOLDERS.includes(folder as Folder)) {
     return NextResponse.json({ error: "Unknown folder." }, { status: 400 });
-  }
-
-  if (typeof idToken !== "string" || idToken === "") {
-    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  }
-
-  const uid = await verifyIdToken(idToken);
-  if (!uid) {
-    return NextResponse.json(
-      {
-        error:
-          "Couldn't verify your session. Sign out and back in; if it keeps " +
-          "happening, check the server log for the reason.",
-      },
-      { status: 401 }
-    );
-  }
-
-  const allowed = allowList();
-  if (allowed.length === 0) {
-    console.error(
-      "[cloudinary-sign] ADMIN_UIDS is empty — refusing every upload. " +
-        `Set ADMIN_UIDS=${uid} in the environment to allow this account.`
-    );
-    return NextResponse.json(
-      {
-        error:
-          `Uploads are disabled because ADMIN_UIDS is not set. Add ` +
-          `ADMIN_UIDS=${uid} to .env.local and restart the server.`,
-      },
-      { status: 403 }
-    );
-  }
-
-  if (!allowed.includes(uid)) {
-    // The caller has already proven they hold a valid session for this project,
-    // so naming their own UID leaks nothing and saves a console trip.
-    console.error(
-      `[cloudinary-sign] uid ${uid} is not in ADMIN_UIDS (${allowed.length} entr` +
-        `${allowed.length === 1 ? "y" : "ies"} configured)`
-    );
-    return NextResponse.json(
-      {
-        error:
-          `This account (${uid}) is not in ADMIN_UIDS. Add it to the ` +
-          `comma-separated list in .env.local and restart the server. ` +
-          `Clearing ADMIN_UIDS does not help — blank denies everyone.`,
-      },
-      { status: 403 }
-    );
   }
 
   // Cloudinary signs the sha1 of every upload param except file, api_key and

@@ -65,13 +65,20 @@ Dev server runs on **port 3838** so it can sit alongside the site on 3737.
 ## Security
 
 - No public sign-up. Accounts are created by hand in the Firebase console.
-- `firestore.rules` gates writes on a UID allow-list and must be deployed for
-  saves to work. Reads are public — the site fetches content unauthenticated.
-- **Two separate allow-lists, easily confused:** `firestore.rules` governs saving
-  content, `ADMIN_UIDS` governs uploading images. Updating one and not the other
-  gives working uploads with failing saves. `savePartial` rewrites Firestore's
-  opaque `permission-denied` into a message naming the signed-in UID; keep that
-  translation if you touch the save path.
+- **Authorization is one place: a document in the `admins` collection.** The
+  security rules check `exists(/admins/$(uid))`, and every protected route calls
+  `requireAdmin`, which does the same after verifying the token. Don't reintroduce
+  a UID list in config — that split is what made adding a user impossible and
+  caused saves and uploads to disagree.
+- Reads are public — the site fetches content unauthenticated.
+- `src/lib/firebase-admin.ts` holds the service account and bypasses all rules.
+  It is `server-only`; never import it from a client component, and never expose
+  `FIREBASE_SERVICE_ACCOUNT` to the browser.
+- Routes that act on another account must check the target has an `admins`
+  document first. The service account will happily delete or re-password any
+  user in the project otherwise.
+- The last admin cannot be removed, and nobody can remove themselves — losing
+  every admin would mean no way back in short of `npm run grant-admin`.
 - `ADMIN_UIDS` (server-only) lists who may upload images and **fails closed** —
   blank denies everyone. Don't "simplify" it back to allowing any authenticated
   user: the Firebase web API key is public, so with sign-up enabled anyone can

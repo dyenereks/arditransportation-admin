@@ -7,14 +7,17 @@
     "build": "next build",
     "start": "next start -p 3838",
     "lint": "eslint",
-    "seed": "node scripts/seed.mjs"
+    "seed": "node scripts/seed.mjs",
+    "grant-admin": "node scripts/grant-admin.mjs"
   },
   "dependencies": {
     "firebase": "^12.4.0",
+    "firebase-admin": "^13.10.0",
     "lucide-react": "^1.14.0",
     "next": "16.2.4",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@types/node": "^20",

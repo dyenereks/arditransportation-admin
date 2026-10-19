@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Images, LogOut, Phone, Truck, ExternalLink } from "lucide-react";
+import { Images, LogOut, Phone, Truck, Users, ExternalLink } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 import { ConfigBanner } from "@/components/ConfigBanner";
 
@@ -11,6 +11,7 @@ const TABS = [
   { href: "/dashboard/contact", label: "Contact", icon: Phone },
   { href: "/dashboard/gallery", label: "Gallery", icon: Images },
   { href: "/dashboard/fleet", label: "Fleet", icon: Truck },
+  { href: "/dashboard/users", label: "Users", icon: Users },
 ];
 
 export default function DashboardLayout({
@@ -65,8 +66,8 @@ export default function DashboardLayout({
               ) : null}
               <span
                 className="hidden md:block text-gray-500 text-xs truncate max-w-[220px]"
-                // The UID is what firestore.rules and ADMIN_UIDS match on, so
-                // keep it one click from the clipboard rather than a console trip.
+                // The UID identifies the account in Firestore and in support
+                // questions, so keep it one click from the clipboard.
                 title={`${user.email}\nUID ${user.uid} (click to copy)`}
                 role="button"
                 tabIndex={0}

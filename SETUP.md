@@ -65,12 +65,28 @@ cp .env.local.example .env.local
 | `CLOUDINARY_API_KEY` | Cloudinary API key |
 | `CLOUDINARY_API_SECRET` | Cloudinary API secret |
 | `CLOUDINARY_ROOT_FOLDER` | Optional — defaults to `arditransportation` |
-| `ADMIN_UIDS` | **Required for uploads** — your UID from step 2. Blank means no one can upload |
+| `FIREBASE_SERVICE_ACCOUNT` | **Required** — see step 4b below |
 
 The `NEXT_PUBLIC_` values are public by design — Firebase web keys identify the
 project rather than granting access, and the Cloudinary cloud name is in every
 image URL anyway. **`CLOUDINARY_API_SECRET` is different: it must never get a
 `NEXT_PUBLIC_` prefix**, or it ships to every visitor's browser.
+
+### 4b. Service account
+
+The Users screen and image uploads both need server-side Firebase.
+
+Project settings → **Service accounts** → *Generate new private key*. That
+downloads a JSON file. Put its entire contents in `FIREBASE_SERVICE_ACCOUNT`,
+on one line. If your host mangles the newlines in the private key, base64 it
+instead — both forms are accepted:
+
+```bash
+base64 -i serviceAccount.json | tr -d '\n'
+```
+
+This key bypasses every security rule. Never give it a `NEXT_PUBLIC_` prefix,
+never commit it, and delete the downloaded JSON once it is in your env file.
 
 ## 5. Turn off public sign-up
 
@@ -87,11 +103,10 @@ hand in the console, so nothing is lost.
 
 ## 6. Deploy the Firestore rules
 
-Open `firestore.rules` and replace `REPLACE_WITH_YOUR_ADMIN_UID` with the UID
-from step 2. To add a second admin later, add their UID to the same list.
+The rules name no UIDs — they check for a document in the `admins` collection,
+which is why adding a user later needs no rules change. Publish them once:
 
-Then either paste the file into the console (Firestore → Rules) and publish, or
-use the CLI:
+paste `firestore.rules` into the console (Firestore → Rules), or use the CLI:
 
 ```bash
 npx firebase-tools login
@@ -102,7 +117,22 @@ npx firebase-tools deploy --only firestore:rules
 > Without this step Firestore's production-mode default denies everything and
 > saves fail with "Missing or insufficient permissions."
 
-## 7. Seed the first document
+## 7. Make yourself an admin
+
+Access is a document in the `admins` collection, not a list in a config file.
+The very first one has to be created from outside the app:
+
+```bash
+nvm use 20
+npm run grant-admin -- you@example.com
+```
+
+The account must already exist (step 2). From then on, everyone else is added
+from the **Users** screen in the app — no rules edits, no redeploys.
+
+Keep this command in mind as the way back in if admin access is ever lost.
+
+## 8. Seed the first document
 
 Optional but recommended — it puts today's live content into Firestore so the
 first thing you see in the admin is the real site, not empty fields.
@@ -115,7 +145,7 @@ npm run seed
 Safe to skip: the admin shows the shipped defaults for an empty document anyway,
 and the first save writes them.
 
-## 8. Point the public website at the same Firebase project
+## 9. Point the public website at the same Firebase project
 
 In `../arditransportation/.env.local`:
 
@@ -129,7 +159,7 @@ Cloudinary configuration at all, and nothing to point at a folder: each photo's
 full URL is stored in the content document, so the site always loads exactly
 what the admin uploaded.
 
-## 9. Optional: instant updates
+## 10. Optional: instant updates
 
 Without this, an edit shows up on the site within 60 seconds. With it, right
 away.
@@ -157,7 +187,7 @@ force the site to refetch its own content.
 Two separate Vercel projects, one per folder.
 
 - **Site** — root `arditransportation`, env: the two `NEXT_PUBLIC_FIREBASE_*`
-  vars, plus `REVALIDATE_SECRET` / `ADMIN_ORIGIN` if you did step 9.
+  vars, plus `REVALIDATE_SECRET` / `ADMIN_ORIGIN` if you did step 10.
 - **Admin** — root `arditransportation-admin`, env: everything in
   `.env.local.example`. Set `NEXT_PUBLIC_SITE_URL` to the live site.
 
@@ -170,13 +200,12 @@ Afterwards, update `ADMIN_ORIGIN` on the site with the admin's real domain.
 
 | Symptom | Cause |
 |---|---|
-| "Missing or insufficient permissions" on save | Step 6 — the signed-in UID is not in the `firestore.rules` allow-list, or the rules were never published. The admin now restates this error with the UID it is signed in as; paste that into the rules. Common cause: the account was deleted and recreated, which issues a **new** UID |
-| Saves fail but image uploads still work | Two different allow-lists. `firestore.rules` governs saving, `ADMIN_UIDS` governs uploading. Updating one and not the other produces exactly this split |
+| "This account is not allowed to edit the site" on save | The account has no `admins` document. Add it under Users, or run `npm run grant-admin`. Note the rules themselves no longer name any UID, so there is nothing to re-publish when people change |
 | "Cloudinary is not configured" when uploading | Step 4 — one of the three Cloudinary vars is blank. On a host, check they're set for the deployed environment, not just locally |
-| "Uploads are disabled because ADMIN_UIDS is not set" | `ADMIN_UIDS` is blank. This is deliberate — the gate fails closed. The message names your UID; paste it in and restart |
-| "This account (…) is not in ADMIN_UIDS" | `ADMIN_UIDS` is set and doesn't include the account you signed in as. The message names your real UID — paste that in. Do not "fix" this by clearing `ADMIN_UIDS`; blank denies everyone. Restart the server after editing `.env.local` |
+| "This account (…) is not an admin" | The signed-in account has no document in `admins`. Add it from the Users screen, or `npm run grant-admin -- <email>` if nobody has access |
+| "User management is not configured" | `FIREBASE_SERVICE_ACCOUNT` is unset or unparseable (step 4b). On a host, check it is set for the deployed environment |
 | "Couldn't verify your session" | Sign out and back in. If it persists, the server log names the cause — usually a Firebase API key with HTTP-referrer restrictions, which block server-side calls |
 | "Your session expired — sign in again" | Sign out and back in |
 | Red *"Not configured"* banner | Step 4 — a blank var; the banner names it. Restart `npm run dev` after editing `.env.local` |
-| Site still shows old content | Wait 60s, or set up step 9. On a host, confirm the site's env vars are set for the deployed environment |
+| Site still shows old content | Wait 60s, or set up step 10. On a host, confirm the site's env vars are set for the deployed environment |
 | Images 400 on the site | The site's `next.config.ts` must allow `res.cloudinary.com` — it already does |

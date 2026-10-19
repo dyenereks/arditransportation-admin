@@ -36,10 +36,9 @@ export async function savePartial(patch: Partial<SiteContent>): Promise<void> {
 /**
  * Firestore reports every rules rejection as the same opaque
  * "Missing or insufficient permissions", which gives an operator nothing to act
- * on. The cause is almost always that the signed-in UID is absent from the
- * allow-list in firestore.rules — commonly because the account was recreated
- * (a new account gets a new UID) or because this browser is signed in as a
- * different user than the one the rules name.
+ * on. Here it means the signed-in account has no document in the `admins`
+ * collection — it can sign in, but it was never granted access, or the grant
+ * was removed.
  *
  * Reads are public, so a failing save with working content is diagnostic on its
  * own: it is the write rule, not connectivity.
@@ -52,12 +51,11 @@ function translateWriteError(e: unknown): Error {
 
   const uid = auth.currentUser?.uid;
   return new Error(
-    `Firestore rejected the write. This browser is signed in as ` +
-      `${auth.currentUser?.email ?? "an unknown account"}` +
+    `This account is not allowed to edit the site — ` +
+      `${auth.currentUser?.email ?? "unknown account"}` +
       (uid ? ` (UID ${uid})` : "") +
-      `. Add that UID to the allow-list in firestore.rules and publish the ` +
-      `rules — Firebase Console → Firestore Database → Rules. Note this is a ` +
-      `separate list from ADMIN_UIDS, which only governs image uploads.`
+      `. Ask an existing admin to add it under Users. If no one has access, ` +
+      `run "npm run grant-admin -- <email>" from the admin project.`
   );
 }
 
@@ -122,8 +120,11 @@ export async function uploadImage(
 
   const signRes = await fetch("/api/cloudinary-sign", {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ idToken: await user.getIdToken(), folder }),
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${await user.getIdToken()}`,
+    },
+    body: JSON.stringify({ folder }),
   });
 
   if (!signRes.ok) {
