@@ -9,6 +9,12 @@ service cloud.firestore {
 
     // Allow-list of accounts that may edit the site.
     // Add each admin's UID (Firebase Console → Authentication → Users).
+    //
+    // This is NOT the same list as ADMIN_UIDS in the admin app's environment:
+    // this one governs saving content, ADMIN_UIDS governs uploading images.
+    // Recreating an account gives it a NEW UID — update both lists when you do,
+    // or saves start failing with "Missing or insufficient permissions" while
+    // uploads keep working.
     function isAdmin() {
       return request.auth != null && request.auth.uid in [
         'REPLACE_WITH_YOUR_ADMIN_UID'

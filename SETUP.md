@@ -170,7 +170,8 @@ Afterwards, update `ADMIN_ORIGIN` on the site with the admin's real domain.
 
 | Symptom | Cause |
 |---|---|
-| "Missing or insufficient permissions" on save | Step 6 — UID not in the rules allow-list, or rules not deployed |
+| "Missing or insufficient permissions" on save | Step 6 — the signed-in UID is not in the `firestore.rules` allow-list, or the rules were never published. The admin now restates this error with the UID it is signed in as; paste that into the rules. Common cause: the account was deleted and recreated, which issues a **new** UID |
+| Saves fail but image uploads still work | Two different allow-lists. `firestore.rules` governs saving, `ADMIN_UIDS` governs uploading. Updating one and not the other produces exactly this split |
 | "Cloudinary is not configured" when uploading | Step 4 — one of the three Cloudinary vars is blank. On a host, check they're set for the deployed environment, not just locally |
 | "Uploads are disabled because ADMIN_UIDS is not set" | `ADMIN_UIDS` is blank. This is deliberate — the gate fails closed. The message names your UID; paste it in and restart |
 | "This account (…) is not in ADMIN_UIDS" | `ADMIN_UIDS` is set and doesn't include the account you signed in as. The message names your real UID — paste that in. Do not "fix" this by clearing `ADMIN_UIDS`; blank denies everyone. Restart the server after editing `.env.local` |

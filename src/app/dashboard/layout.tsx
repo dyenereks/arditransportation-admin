@@ -63,7 +63,22 @@ export default function DashboardLayout({
                   View site <ExternalLink size={14} />
                 </a>
               ) : null}
-              <span className="hidden md:block text-gray-500 text-xs truncate max-w-[180px]">
+              <span
+                className="hidden md:block text-gray-500 text-xs truncate max-w-[220px]"
+                // The UID is what firestore.rules and ADMIN_UIDS match on, so
+                // keep it one click from the clipboard rather than a console trip.
+                title={`${user.email}\nUID ${user.uid} (click to copy)`}
+                role="button"
+                tabIndex={0}
+                onClick={() => navigator.clipboard?.writeText(user.uid)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigator.clipboard?.writeText(user.uid);
+                  }
+                }}
+                style={{ cursor: "pointer" }}
+              >
                 {user.email}
               </span>
               <button

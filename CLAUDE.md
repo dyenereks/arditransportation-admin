@@ -67,6 +67,11 @@ Dev server runs on **port 3838** so it can sit alongside the site on 3737.
 - No public sign-up. Accounts are created by hand in the Firebase console.
 - `firestore.rules` gates writes on a UID allow-list and must be deployed for
   saves to work. Reads are public — the site fetches content unauthenticated.
+- **Two separate allow-lists, easily confused:** `firestore.rules` governs saving
+  content, `ADMIN_UIDS` governs uploading images. Updating one and not the other
+  gives working uploads with failing saves. `savePartial` rewrites Firestore's
+  opaque `permission-denied` into a message naming the signed-in UID; keep that
+  translation if you touch the save path.
 - `ADMIN_UIDS` (server-only) lists who may upload images and **fails closed** —
   blank denies everyone. Don't "simplify" it back to allowing any authenticated
   user: the Firebase web API key is public, so with sign-up enabled anyone can
