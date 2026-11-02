@@ -36,20 +36,50 @@ if (!email || !email.includes("@")) {
   exit(1);
 }
 
-if (!env.FIREBASE_SERVICE_ACCOUNT) {
+/**
+ * Reads the service account in either supported form, matching
+ * src/lib/firebase-admin.ts — the whole JSON in FIREBASE_SERVICE_ACCOUNT, or
+ * FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY for hosts
+ * that cap the combined size of all environment variables.
+ */
+function readServiceAccount() {
+  const normalizeKey = (k) =>
+    k.trim().replace(/^["']|["']$/g, "").replace(/\\n/g, "\n");
+
+  const blob = env.FIREBASE_SERVICE_ACCOUNT?.trim();
+  if (blob) {
+    const parsed = JSON.parse(
+      blob.startsWith("{") ? blob : Buffer.from(blob, "base64").toString("utf8")
+    );
+    return {
+      project_id: parsed.project_id,
+      client_email: parsed.client_email,
+      private_key: normalizeKey(parsed.private_key ?? ""),
+    };
+  }
+
+  if (env.FIREBASE_PROJECT_ID && env.FIREBASE_CLIENT_EMAIL && env.FIREBASE_PRIVATE_KEY) {
+    return {
+      project_id: env.FIREBASE_PROJECT_ID.trim(),
+      client_email: env.FIREBASE_CLIENT_EMAIL.trim(),
+      private_key: normalizeKey(env.FIREBASE_PRIVATE_KEY),
+    };
+  }
+
+  return null;
+}
+
+const json = readServiceAccount();
+
+if (!json?.project_id || !json?.client_email || !json?.private_key) {
   console.error(
-    "FIREBASE_SERVICE_ACCOUNT is not set — see SETUP.md. It is required " +
-      "because granting access writes a document the security rules forbid " +
-      "clients from touching."
+    "No service account configured — see SETUP.md step 4b. Granting access " +
+      "writes a document the security rules forbid clients from touching, so " +
+      "this needs either FIREBASE_SERVICE_ACCOUNT, or all three of " +
+      "FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY."
   );
   exit(1);
 }
-
-const raw = env.FIREBASE_SERVICE_ACCOUNT.trim();
-const json = JSON.parse(
-  raw.startsWith("{") ? raw : Buffer.from(raw, "base64").toString("utf8")
-);
-json.private_key = json.private_key.replace(/\\n/g, "\n");
 
 const { cert, initializeApp } = await import("firebase-admin/app");
 const { getAuth } = await import("firebase-admin/auth");
