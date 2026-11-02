@@ -113,15 +113,15 @@ function verifyFailure(e: unknown): Failure {
     case "auth/argument-error":
       return fail("Your session looks corrupted — sign out and sign in again.", 401);
     case "app/invalid-credential":
-      // The service account could not get an access token: wrong client email,
-      // or a key that has been revoked or whose account was deleted. Report
-      // which credential is actually in play — when one environment works and
-      // another does not, that is the question worth answering first.
+      // Firebase wraps everything that stops it getting an OAuth token in this
+      // one code — a rejected key, a skewed clock, a blocked outbound request.
+      // The wrapped reason is the only thing that separates them, so pass it
+      // through rather than make the reader find it in a log. It carries no key
+      // material, and this response only ever reaches a signed-in operator.
       return fail(
-        "Firebase rejected the server's credentials, so your session could " +
-          `not be checked. In use: ${describeCredential()}. Compare that with ` +
-          "a working environment — a differing key fingerprint means this " +
-          "environment has a stale or revoked key.",
+        "The server could not obtain a Google access token, so your session " +
+          `could not be checked. Firebase said: ${reason(detail)} — In use: ` +
+          `${describeCredential()}.`,
         503
       );
     default:
@@ -130,9 +130,23 @@ function verifyFailure(e: unknown): Failure {
       // apart is server log access, which the person hitting this may not have.
       return fail(
         `The server could not verify your session (${code || "no error code"}). ` +
-          "This is a server-side credential problem, not your login. In use: " +
-          `${describeCredential()}.`,
+          `This is a server-side problem, not your login. ${reason(detail)} — ` +
+          `In use: ${describeCredential()}.`,
         500
       );
   }
+}
+
+/**
+ * Pull the useful part out of a Firebase error message.
+ *
+ * Its credential errors read "...failed to fetch a valid Google OAuth2 access
+ * token with the following error: <the actual cause>" — only the tail matters,
+ * and the preamble crowds it out of a UI message.
+ */
+function reason(detail: string): string {
+  // [\s\S] rather than the dotAll flag, which needs an ES2018 target.
+  const match = detail.match(/following error:\s*([\s\S]*)$/);
+  const text = (match ? match[1] : detail).trim().replace(/\s+/g, " ");
+  return text.length > 300 ? `${text.slice(0, 300)}…` : text;
 }
