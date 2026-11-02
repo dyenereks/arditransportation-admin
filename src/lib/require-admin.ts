@@ -35,11 +35,22 @@ export function bearerToken(request: Request): string | null {
 export async function requireAdmin(
   request: Request
 ): Promise<AdminCaller | Failure> {
-  const sdk = adminSdk();
+  let sdk: ReturnType<typeof adminSdk>;
+  try {
+    sdk = adminSdk();
+  } catch (e: unknown) {
+    // A malformed service account explains itself; don't bury it in a 500.
+    const detail = e instanceof Error ? e.message : "unknown error";
+    console.error(`[requireAdmin] service account unusable: ${detail}`);
+    return fail(detail, 503);
+  }
+
   if (!sdk) {
     return fail(
-      "User management is not configured — set FIREBASE_SERVICE_ACCOUNT. " +
-        "See SETUP.md.",
+      "User management is not configured — set FIREBASE_SERVICE_ACCOUNT, or " +
+        "FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY. " +
+        "On Netlify these must be set in the UI (not netlify.toml) and scoped " +
+        "to Functions. See SETUP.md.",
       503
     );
   }
@@ -101,13 +112,25 @@ function verifyFailure(e: unknown): Failure {
       );
     case "auth/argument-error":
       return fail("Your session looks corrupted — sign out and sign in again.", 401);
+    case "app/invalid-credential":
+      // The service account could not get an access token: wrong client email,
+      // or a key that has been revoked or whose account was deleted.
+      return fail(
+        "The server's Firebase credentials are not valid, so your session " +
+          "could not be checked. Verify FIREBASE_CLIENT_EMAIL and " +
+          "FIREBASE_PRIVATE_KEY for this environment, and that the " +
+          "service-account key has not been revoked.",
+        503
+      );
     default:
       // Credential or connectivity problem: nothing the operator can fix by
-      // signing in again.
+      // signing in again. Name the code — without it the only way to tell these
+      // apart is server log access, which the person hitting this may not have.
       return fail(
-        "The server could not verify your session. This is usually a bad " +
-          "FIREBASE_SERVICE_ACCOUNT rather than a problem with your login — " +
-          "check the server log.",
+        `The server could not verify your session (${code || "no error code"}). ` +
+          "This is a server-side credential problem, not your login — check " +
+          "that the service-account variables are set correctly for the " +
+          "deployed environment.",
         500
       );
   }

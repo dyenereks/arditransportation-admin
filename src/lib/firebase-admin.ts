@@ -20,12 +20,83 @@ type ServiceAccount = {
   private_key: string;
 };
 
-/** Env vars routinely arrive with the key's newlines escaped, or quote-wrapped. */
-function normalizeKey(key: string): string {
-  return key
+/**
+ * Recover a usable PEM from however the host stored it.
+ *
+ * Private keys survive env vars badly: they arrive quote-wrapped, with newlines
+ * escaped once, or — when a value passes through two layers of escaping, which
+ * some hosting dashboards do — escaped twice. All three forms look fine in a UI
+ * and fail only when the SDK tries to sign a token.
+ */
+function unwrap(value: string): string {
+  // Strip balanced wrapping quotes, then any stray leading/trailing quote left
+  // by a mispaste — a single unmatched quote on an email or project id is
+  // invisible in an env file and breaks authentication with a message that
+  // points nowhere near the real cause.
+  return value
     .trim()
-    .replace(/^["']|["']$/g, "")
-    .replace(/\\n/g, "\n");
+    .replace(/^(["'])([\s\S]*)\1$/, "$2")
+    .replace(/^["']+|["']+$/g, "")
+    .trim();
+}
+
+function normalizeKey(key: string): string {
+  const body = unwrap(key)
+    .replace(/\\\\n/g, "\n") // \\n  (double-escaped)
+    .replace(/\\n/g, "\n"); //  \n   (single-escaped)
+  // PEM convention keeps a trailing newline; some parsers insist on it.
+  return body.endsWith("\n") ? body : `${body}\n`;
+}
+
+/** Reject values that will only fail later, far from their cause. */
+function assertUsableIdentity(projectId: string, clientEmail: string): void {
+  if (/["'\s]/.test(projectId)) {
+    throw new Error(
+      `The service-account project id ("${projectId}") contains quotes or ` +
+        "whitespace. Remove them from the environment variable."
+    );
+  }
+  if (/["'\s]/.test(clientEmail)) {
+    throw new Error(
+      `The service-account client email ("${clientEmail}") contains quotes or ` +
+        "whitespace — usually a stray quote from pasting. Remove it."
+    );
+  }
+  if (!clientEmail.includes("@") || !clientEmail.endsWith(".iam.gserviceaccount.com")) {
+    throw new Error(
+      `The service-account client email ("${clientEmail}") does not look like ` +
+        "a service account — it should end with .iam.gserviceaccount.com."
+    );
+  }
+}
+
+/**
+ * Catch a mangled key here rather than letting it surface later as an opaque
+ * verification failure that looks like the user's session is at fault.
+ */
+function assertUsableKey(key: string): void {
+  const begin = /-----BEGIN (?:RSA )?PRIVATE KEY-----/.test(key);
+  const end = /-----END (?:RSA )?PRIVATE KEY-----/.test(key);
+  if (!begin || !end) {
+    throw new Error(
+      "The service-account private key is missing its BEGIN/END markers — " +
+        "the value looks truncated. Check it was pasted in full."
+    );
+  }
+  if (!key.includes("\n")) {
+    throw new Error(
+      "The service-account private key has no line breaks, so it cannot be " +
+        "parsed. Store it with real newlines, or with them escaped as \\n."
+    );
+  }
+  if (key.includes("\\")) {
+    throw new Error(
+      "The service-account private key still contains backslashes after " +
+        "unescaping, so the host stored it double-escaped in a way this cannot " +
+        "undo. Re-paste it, or use FIREBASE_SERVICE_ACCOUNT with the JSON " +
+        "minified to one line."
+    );
+  }
 }
 
 /**
@@ -67,15 +138,20 @@ function readServiceAccount(): ServiceAccount | null {
       );
     }
 
-    return {
-      project_id: parsed.project_id!,
-      client_email: parsed.client_email!,
-      private_key: normalizeKey(parsed.private_key!),
-    };
+    const project_id = unwrap(parsed.project_id!);
+    const client_email = unwrap(parsed.client_email!);
+    const private_key = normalizeKey(parsed.private_key!);
+    assertUsableIdentity(project_id, client_email);
+    assertUsableKey(private_key);
+    return { project_id, client_email, private_key };
   }
 
-  const project_id = process.env.FIREBASE_PROJECT_ID?.trim();
-  const client_email = process.env.FIREBASE_CLIENT_EMAIL?.trim();
+  const project_id = process.env.FIREBASE_PROJECT_ID
+    ? unwrap(process.env.FIREBASE_PROJECT_ID)
+    : undefined;
+  const client_email = process.env.FIREBASE_CLIENT_EMAIL
+    ? unwrap(process.env.FIREBASE_CLIENT_EMAIL)
+    : undefined;
   const private_key = process.env.FIREBASE_PRIVATE_KEY;
 
   if (!project_id && !client_email && !private_key) return null;
@@ -92,10 +168,13 @@ function readServiceAccount(): ServiceAccount | null {
     );
   }
 
+  const key = normalizeKey(private_key!);
+  assertUsableIdentity(project_id!, client_email!);
+  assertUsableKey(key);
   return {
     project_id: project_id!,
     client_email: client_email!,
-    private_key: normalizeKey(private_key!),
+    private_key: key,
   };
 }
 
