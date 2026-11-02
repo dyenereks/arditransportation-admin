@@ -1,7 +1,7 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
-import { ADMINS, adminSdk } from "./firebase-admin";
+import { ADMINS, adminSdk, describeCredential } from "./firebase-admin";
 
 /**
  * Establishes that a request comes from a signed-in admin.
@@ -114,12 +114,14 @@ function verifyFailure(e: unknown): Failure {
       return fail("Your session looks corrupted — sign out and sign in again.", 401);
     case "app/invalid-credential":
       // The service account could not get an access token: wrong client email,
-      // or a key that has been revoked or whose account was deleted.
+      // or a key that has been revoked or whose account was deleted. Report
+      // which credential is actually in play — when one environment works and
+      // another does not, that is the question worth answering first.
       return fail(
-        "The server's Firebase credentials are not valid, so your session " +
-          "could not be checked. Verify FIREBASE_CLIENT_EMAIL and " +
-          "FIREBASE_PRIVATE_KEY for this environment, and that the " +
-          "service-account key has not been revoked.",
+        "Firebase rejected the server's credentials, so your session could " +
+          `not be checked. In use: ${describeCredential()}. Compare that with ` +
+          "a working environment — a differing key fingerprint means this " +
+          "environment has a stale or revoked key.",
         503
       );
     default:
@@ -128,9 +130,8 @@ function verifyFailure(e: unknown): Failure {
       // apart is server log access, which the person hitting this may not have.
       return fail(
         `The server could not verify your session (${code || "no error code"}). ` +
-          "This is a server-side credential problem, not your login — check " +
-          "that the service-account variables are set correctly for the " +
-          "deployed environment.",
+          "This is a server-side credential problem, not your login. In use: " +
+          `${describeCredential()}.`,
         500
       );
   }

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import { cert, getApp, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
@@ -110,42 +112,56 @@ function assertUsableKey(key: string): void {
  * is ~2.4 KB raw or ~3.2 KB base64. Keeping only the three fields that matter
  * brings it to ~1.9 KB.
  */
-function readServiceAccount(): ServiceAccount | null {
-  const blob = process.env.FIREBASE_SERVICE_ACCOUNT?.trim();
+type Source = "FIREBASE_SERVICE_ACCOUNT" | "split variables";
 
-  if (blob) {
-    const text = blob.startsWith("{")
-      ? blob
-      : Buffer.from(blob, "base64").toString("utf8");
+/** Non-secret description of whichever credential was loaded, for diagnostics. */
+let loaded: { source: Source; projectId: string; clientEmail: string; keyFingerprint: string } | null =
+  null;
 
-    let parsed: Partial<ServiceAccount>;
-    try {
-      parsed = JSON.parse(text) as Partial<ServiceAccount>;
-    } catch {
-      throw new Error(
-        "FIREBASE_SERVICE_ACCOUNT is not valid JSON. Paste the whole " +
-          "service-account file (minified to one line), or its base64 encoding."
-      );
-    }
+/**
+ * A short, non-secret fingerprint of the private key.
+ *
+ * Enough to tell two keys apart — which is the question when one environment
+ * works and another does not — without revealing any of the key itself.
+ */
+function fingerprint(key: string): string {
+  return createHash("sha256").update(key).digest("hex").slice(0, 12);
+}
 
-    const missing = (["project_id", "client_email", "private_key"] as const).filter(
-      (k) => !parsed[k]
+function parseBlob(blob: string): ServiceAccount {
+  const text = blob.startsWith("{")
+    ? blob
+    : Buffer.from(blob, "base64").toString("utf8");
+
+  let parsed: Partial<ServiceAccount>;
+  try {
+    parsed = JSON.parse(text) as Partial<ServiceAccount>;
+  } catch {
+    throw new Error(
+      "FIREBASE_SERVICE_ACCOUNT is not valid JSON. Paste the whole " +
+        "service-account file (minified to one line), or its base64 encoding."
     );
-    if (missing.length) {
-      throw new Error(
-        `FIREBASE_SERVICE_ACCOUNT is missing ${missing.join(", ")}. ` +
-          "Use the file from Firebase Console → Project settings → Service accounts."
-      );
-    }
-
-    const project_id = unwrap(parsed.project_id!);
-    const client_email = unwrap(parsed.client_email!);
-    const private_key = normalizeKey(parsed.private_key!);
-    assertUsableIdentity(project_id, client_email);
-    assertUsableKey(private_key);
-    return { project_id, client_email, private_key };
   }
 
+  const missing = (["project_id", "client_email", "private_key"] as const).filter(
+    (k) => !parsed[k]
+  );
+  if (missing.length) {
+    throw new Error(
+      `FIREBASE_SERVICE_ACCOUNT is missing ${missing.join(", ")}. ` +
+        "Use the file from Firebase Console → Project settings → Service accounts."
+    );
+  }
+
+  const project_id = unwrap(parsed.project_id!);
+  const client_email = unwrap(parsed.client_email!);
+  const private_key = normalizeKey(parsed.private_key!);
+  assertUsableIdentity(project_id, client_email);
+  assertUsableKey(private_key);
+  return { project_id, client_email, private_key };
+}
+
+function parseSplit(): ServiceAccount | null {
   const project_id = process.env.FIREBASE_PROJECT_ID
     ? unwrap(process.env.FIREBASE_PROJECT_ID)
     : undefined;
@@ -171,11 +187,70 @@ function readServiceAccount(): ServiceAccount | null {
   const key = normalizeKey(private_key!);
   assertUsableIdentity(project_id!, client_email!);
   assertUsableKey(key);
-  return {
-    project_id: project_id!,
-    client_email: client_email!,
-    private_key: key,
+  return { project_id: project_id!, client_email: client_email!, private_key: key };
+}
+
+function readServiceAccount(): ServiceAccount | null {
+  const blob = process.env.FIREBASE_SERVICE_ACCOUNT?.trim();
+  const hasSplit = !!(
+    process.env.FIREBASE_PROJECT_ID ||
+    process.env.FIREBASE_CLIENT_EMAIL ||
+    process.env.FIREBASE_PRIVATE_KEY
+  );
+
+  if (blob) {
+    if (hasSplit) {
+      console.warn(
+        "[firebase-admin] Both FIREBASE_SERVICE_ACCOUNT and the split variables " +
+          "are set. The blob wins. If you meant to switch to the split form, " +
+          "delete FIREBASE_SERVICE_ACCOUNT from this environment."
+      );
+    }
+    try {
+      const sa = parseBlob(blob);
+      loaded = {
+        source: "FIREBASE_SERVICE_ACCOUNT",
+        projectId: sa.project_id,
+        clientEmail: sa.client_email,
+        keyFingerprint: fingerprint(sa.private_key),
+      };
+      return sa;
+    } catch (e) {
+      // Rather than fail outright, prefer a usable split credential if one is
+      // present — otherwise a stale blob silently defeats a correct update.
+      if (!hasSplit) throw e;
+      console.warn(
+        `[firebase-admin] FIREBASE_SERVICE_ACCOUNT is unusable (${
+          e instanceof Error ? e.message : "unknown error"
+        }); falling back to the split variables.`
+      );
+    }
+  }
+
+  const split = parseSplit();
+  if (!split) return null;
+  loaded = {
+    source: "split variables",
+    projectId: split.project_id,
+    clientEmail: split.client_email,
+    keyFingerprint: fingerprint(split.private_key),
   };
+  return split;
+}
+
+/**
+ * Which credential is in play, in non-secret terms.
+ *
+ * When one environment authenticates and another does not, the useful question
+ * is whether they are even using the same values — this answers it without
+ * exposing the key.
+ */
+export function describeCredential(): string {
+  if (!loaded) return "no service account loaded";
+  return (
+    `source=${loaded.source}, project=${loaded.projectId}, ` +
+    `client_email=${loaded.clientEmail}, key#${loaded.keyFingerprint}`
+  );
 }
 
 let cached: { app: App; auth: Auth; db: Firestore } | null = null;
