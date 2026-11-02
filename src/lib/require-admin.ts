@@ -55,8 +55,8 @@ export async function requireAdmin(
     const decoded = await sdk.auth.verifyIdToken(token, true);
     uid = decoded.uid;
     email = decoded.email ?? null;
-  } catch {
-    return fail("Your session is no longer valid — sign in again.", 401);
+  } catch (e: unknown) {
+    return verifyFailure(e);
   }
 
   const doc = await sdk.db.collection(ADMINS).doc(uid).get();
@@ -69,4 +69,46 @@ export async function requireAdmin(
   }
 
   return { uid, email };
+}
+
+/**
+ * Not every verification failure is the caller's session.
+ *
+ * verifyIdToken also reaches out to the Auth backend when checking revocation,
+ * so a bad service account or a network problem lands in the same catch as an
+ * expired token. Reporting those as "sign in again" sends an operator chasing
+ * their own session while the real fault is server-side, so they are separated
+ * here and the server log keeps the detail either way.
+ */
+function verifyFailure(e: unknown): Failure {
+  const code = (e as { code?: string })?.code ?? "";
+  const detail = e instanceof Error ? e.message : String(e);
+  console.error(`[requireAdmin] verifyIdToken failed (${code || "no code"}): ${detail}`);
+
+  switch (code) {
+    case "auth/id-token-expired":
+      return fail("Your session expired — sign in again.", 401);
+    case "auth/id-token-revoked":
+      return fail("You were signed out elsewhere — sign in again.", 401);
+    case "auth/user-disabled":
+      return fail("This account has been disabled.", 403);
+    case "auth/user-not-found":
+      // The account behind a still-valid token was deleted in the console.
+      return fail(
+        "The account for this session no longer exists. Sign out and sign in " +
+          "with a current account.",
+        401
+      );
+    case "auth/argument-error":
+      return fail("Your session looks corrupted — sign out and sign in again.", 401);
+    default:
+      // Credential or connectivity problem: nothing the operator can fix by
+      // signing in again.
+      return fail(
+        "The server could not verify your session. This is usually a bad " +
+          "FIREBASE_SERVICE_ACCOUNT rather than a problem with your login — " +
+          "check the server log.",
+        500
+      );
+  }
 }
