@@ -88,6 +88,25 @@ base64 -i serviceAccount.json | tr -d '\n'
 This key bypasses every security rule. Never give it a `NEXT_PUBLIC_` prefix,
 never commit it, and delete the downloaded JSON once it is in your env file.
 
+If your host caps the **combined** size of all environment variables, set these
+three instead — they are the only fields actually used, and together they are
+noticeably smaller:
+
+```
+FIREBASE_PROJECT_ID=
+FIREBASE_CLIENT_EMAIL=
+FIREBASE_PRIVATE_KEY=
+```
+
+Escaped `\n` newlines and wrapping quotes in the private key are both handled,
+so paste it however your host gives it back.
+
+| Form | Size |
+| --- | --- |
+| Full JSON, as downloaded | ~2,376 chars |
+| Full JSON, base64 | ~3,168 chars |
+| The three fields above | ~1,879 chars |
+
 ## 5. Turn off public sign-up
 
 Authentication → **Settings** → User actions → untick **Enable create (sign-up)**.
@@ -182,17 +201,40 @@ Use the real domains in production. The secret ships to the browser, so it's a
 nuisance filter rather than a credential — the worst a caller can do with it is
 force the site to refetch its own content.
 
-## Deploying
+## Deploying to Netlify
 
-Two separate Vercel projects, one per folder.
+The admin needs a real server — it has API routes — so deploy it as a Next.js
+site, not a static export. Four things to get right:
+
+1. **Set env vars in the Netlify UI, not `netlify.toml`.** Variables declared in
+   `netlify.toml` are not available to serverless functions at all, so the Users
+   screen and uploads would fail with "User management is not configured" while
+   the build itself succeeds.
+2. **Scope must include Functions.** API routes read these at request time. On
+   plans with scope controls, a variable scoped only to Builds is invisible to
+   them.
+3. **Minify the service-account JSON to one line** before pasting
+   (`jq -c . serviceAccount.json`). Netlify allows up to 5,000 characters per
+   value, so ~2,376 fits comfortably — but a pasted multi-line value is the
+   usual source of trouble.
+4. **Mark it "Contains secret values."** Netlify then restricts where it can be
+   read from.
+
+If a deploy fails citing AWS Lambda environment-property limits, you are on
+Lambda compatibility mode, which caps **all** variables at 4 KB combined. Switch
+to the three-field form above, or move off that mode.
+
+Set `NEXT_PUBLIC_SITE_URL` to the live website, and update `ADMIN_ORIGIN` on the
+website with the admin's real domain.
+
+## Deploying to Vercel
+
+Two separate projects, one per folder.
 
 - **Site** — root `arditransportation`, env: the two `NEXT_PUBLIC_FIREBASE_*`
   vars, plus `REVALIDATE_SECRET` / `ADMIN_ORIGIN` if you did step 10.
 - **Admin** — root `arditransportation-admin`, env: everything in
   `.env.local.example`. Set `NEXT_PUBLIC_SITE_URL` to the live site.
-
-The admin needs a real server (it has API routes) — a static export won't work.
-Vercel, Netlify, or any Node host is fine.
 
 Afterwards, update `ADMIN_ORIGIN` on the site with the admin's real domain.
 
@@ -203,7 +245,8 @@ Afterwards, update `ADMIN_ORIGIN` on the site with the admin's real domain.
 | "This account is not allowed to edit the site" on save | The account has no `admins` document. Add it under Users, or run `npm run grant-admin`. Note the rules themselves no longer name any UID, so there is nothing to re-publish when people change |
 | "Cloudinary is not configured" when uploading | Step 4 — one of the three Cloudinary vars is blank. On a host, check they're set for the deployed environment, not just locally |
 | "This account (…) is not an admin" | The signed-in account has no document in `admins`. Add it from the Users screen, or `npm run grant-admin -- <email>` if nobody has access |
-| "User management is not configured" | `FIREBASE_SERVICE_ACCOUNT` is unset or unparseable (step 4b). On a host, check it is set for the deployed environment |
+| "User management is not configured" | The service account is unset or unparseable (step 4b). On Netlify, check it is set in the UI rather than `netlify.toml`, and that its scope includes Functions |
+| Deploy fails citing AWS Lambda environment properties | All variables together exceed 4 KB under Lambda compatibility mode. Use the three-field service-account form |
 | "Couldn't verify your session" | Sign out and back in. If it persists, the server log names the cause — usually a Firebase API key with HTTP-referrer restrictions, which block server-side calls |
 | "Your session expired — sign in again" | Sign out and back in |
 | Red *"Not configured"* banner | Step 4 — a blank var; the banner names it. Restart `npm run dev` after editing `.env.local` |

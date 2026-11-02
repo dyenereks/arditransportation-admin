@@ -14,33 +14,89 @@ import { getFirestore, type Firestore } from "firebase-admin/firestore";
 
 const APP_NAME = "admin";
 
+type ServiceAccount = {
+  project_id: string;
+  client_email: string;
+  private_key: string;
+};
+
+/** Env vars routinely arrive with the key's newlines escaped, or quote-wrapped. */
+function normalizeKey(key: string): string {
+  return key
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/\\n/g, "\n");
+}
+
 /**
- * Accepts the service-account JSON either raw or base64-encoded. Base64 is the
- * practical choice for hosting dashboards, which mangle multi-line values.
+ * Reads the service account from either form:
+ *
+ *   FIREBASE_SERVICE_ACCOUNT  — the whole JSON, raw or base64
+ *   FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY
+ *
+ * The split form exists for hosts that cap the combined size of all
+ * environment variables — AWS Lambda allows 4 KB in total, and the full JSON
+ * is ~2.4 KB raw or ~3.2 KB base64. Keeping only the three fields that matter
+ * brings it to ~1.9 KB.
  */
-function readServiceAccount(): Record<string, string> | null {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!raw) return null;
+function readServiceAccount(): ServiceAccount | null {
+  const blob = process.env.FIREBASE_SERVICE_ACCOUNT?.trim();
 
-  const text = raw.trim().startsWith("{")
-    ? raw
-    : Buffer.from(raw, "base64").toString("utf8");
+  if (blob) {
+    const text = blob.startsWith("{")
+      ? blob
+      : Buffer.from(blob, "base64").toString("utf8");
 
-  try {
-    const parsed = JSON.parse(text) as Record<string, string>;
-    if (!parsed.project_id || !parsed.client_email || !parsed.private_key) {
-      throw new Error("missing project_id, client_email or private_key");
+    let parsed: Partial<ServiceAccount>;
+    try {
+      parsed = JSON.parse(text) as Partial<ServiceAccount>;
+    } catch {
+      throw new Error(
+        "FIREBASE_SERVICE_ACCOUNT is not valid JSON. Paste the whole " +
+          "service-account file (minified to one line), or its base64 encoding."
+      );
     }
-    // Env vars commonly arrive with the key's newlines escaped.
-    parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
-    return parsed;
-  } catch (e) {
+
+    const missing = (["project_id", "client_email", "private_key"] as const).filter(
+      (k) => !parsed[k]
+    );
+    if (missing.length) {
+      throw new Error(
+        `FIREBASE_SERVICE_ACCOUNT is missing ${missing.join(", ")}. ` +
+          "Use the file from Firebase Console → Project settings → Service accounts."
+      );
+    }
+
+    return {
+      project_id: parsed.project_id!,
+      client_email: parsed.client_email!,
+      private_key: normalizeKey(parsed.private_key!),
+    };
+  }
+
+  const project_id = process.env.FIREBASE_PROJECT_ID?.trim();
+  const client_email = process.env.FIREBASE_CLIENT_EMAIL?.trim();
+  const private_key = process.env.FIREBASE_PRIVATE_KEY;
+
+  if (!project_id && !client_email && !private_key) return null;
+
+  const missing = [
+    !project_id && "FIREBASE_PROJECT_ID",
+    !client_email && "FIREBASE_CLIENT_EMAIL",
+    !private_key && "FIREBASE_PRIVATE_KEY",
+  ].filter(Boolean);
+  if (missing.length) {
     throw new Error(
-      `FIREBASE_SERVICE_ACCOUNT could not be parsed (${
-        e instanceof Error ? e.message : "unknown error"
-      }). Paste the whole service-account JSON, or its base64 encoding.`
+      `Incomplete service account — missing ${missing.join(", ")}. ` +
+        "Set all three, or use FIREBASE_SERVICE_ACCOUNT instead."
     );
   }
+
+  return {
+    project_id: project_id!,
+    client_email: client_email!,
+    private_key: normalizeKey(private_key!),
+  };
 }
 
 let cached: { app: App; auth: Auth; db: Firestore } | null = null;
