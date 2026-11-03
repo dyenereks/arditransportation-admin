@@ -8,7 +8,8 @@ Manages:
 - **Contact & Location** — phone (displayed + dialed), hours, email, office address
 - **Gallery** — the "Happy Clients" carousel: photos, captions, order
 - **Fleet** — vehicle cards: photos, name, class, capacity, badge, photo size
-- **Users** — add and remove admins, reset their passwords, change your own
+- **Users** — add and remove admins, reset their passwords
+- **Profile** — your own account, and changing your own password
 - **Facebook** — page URL and handle
 
 ## Stack

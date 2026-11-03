@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { KeyRound, Loader2, Trash2, UserPlus } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
-import { Card, Field, SectionHeader, TextInput } from "@/components/ui";
+import { Card, ErrorText, Field, SectionHeader, TextInput } from "@/components/ui";
 import {
-  changeOwnPassword,
   createUser,
   deleteUser,
   listUsers,
@@ -83,7 +82,6 @@ export default function UsersPage() {
           )}
         </Card>
 
-        <ChangeOwnPassword />
       </div>
     </>
   );
@@ -262,7 +260,7 @@ function UserRow({
             </>
           ) : (
             <span className="text-gray-600 text-xs">
-              Change your own password below
+              Change your password under Profile
             </span>
           )}
         </div>
@@ -300,108 +298,5 @@ function UserRow({
         </p>
       ) : null}
     </li>
-  );
-}
-
-function ChangeOwnPassword() {
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
-  const [confirmValue, setConfirmValue] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [done, setDone] = useState(false);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setError("");
-    setDone(false);
-
-    if (next !== confirmValue) {
-      setError("The new passwords don't match.");
-      return;
-    }
-    if (next.length < MIN_PASSWORD) {
-      setError(`Choose a password of at least ${MIN_PASSWORD} characters.`);
-      return;
-    }
-
-    setBusy(true);
-    try {
-      await changeOwnPassword(current, next);
-      setDone(true);
-      setCurrent("");
-      setNext("");
-      setConfirmValue("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update your password.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Card>
-      <h2 className="text-white font-bold mb-5">Change my password</h2>
-      <form onSubmit={submit} className="space-y-5">
-        <Field label="Current password">
-          <TextInput
-            type="password"
-            required
-            autoComplete="current-password"
-            value={current}
-            onChange={(e) => setCurrent(e.target.value)}
-          />
-        </Field>
-        <div className="grid sm:grid-cols-2 gap-5">
-          <Field label="New password" hint={`At least ${MIN_PASSWORD} characters.`}>
-            <TextInput
-              type="password"
-              required
-              minLength={MIN_PASSWORD}
-              autoComplete="new-password"
-              value={next}
-              onChange={(e) => setNext(e.target.value)}
-            />
-          </Field>
-          <Field label="Confirm new password">
-            <TextInput
-              type="password"
-              required
-              autoComplete="new-password"
-              value={confirmValue}
-              onChange={(e) => setConfirmValue(e.target.value)}
-            />
-          </Field>
-        </div>
-
-        {error ? <ErrorText>{error}</ErrorText> : null}
-        {done ? (
-          <p className="text-sm text-green-400" role="status">
-            Password updated.
-          </p>
-        ) : null}
-
-        <button
-          type="submit"
-          disabled={busy}
-          className="inline-flex items-center gap-2 bg-[#DC0000] text-white font-bold text-sm px-6 py-2.5 rounded-xl transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          {busy ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
-          {busy ? "Updating…" : "Update password"}
-        </button>
-      </form>
-    </Card>
-  );
-}
-
-function ErrorText({ children }: { children: React.ReactNode }) {
-  return (
-    <p
-      className="text-sm rounded-xl px-4 py-3"
-      style={{ background: "rgba(220,0,0,0.12)", color: "#ff6b6b" }}
-      role="alert"
-    >
-      {children}
-    </p>
   );
 }

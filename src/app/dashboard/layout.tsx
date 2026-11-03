@@ -3,7 +3,15 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Images, LogOut, Phone, Truck, Users, ExternalLink } from "lucide-react";
+import {
+  Images,
+  LogOut,
+  Phone,
+  Truck,
+  UserCircle,
+  Users,
+  ExternalLink,
+} from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 import { ConfigBanner } from "@/components/ConfigBanner";
 
@@ -12,6 +20,7 @@ const TABS = [
   { href: "/dashboard/gallery", label: "Gallery", icon: Images },
   { href: "/dashboard/fleet", label: "Fleet", icon: Truck },
   { href: "/dashboard/users", label: "Users", icon: Users },
+  { href: "/dashboard/profile", label: "Profile", icon: UserCircle },
 ];
 
 export default function DashboardLayout({

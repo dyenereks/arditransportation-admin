@@ -119,3 +119,15 @@ export function IconBtn({
     </button>
   );
 }
+
+export function ErrorText({ children }: { children: ReactNode }) {
+  return (
+    <p
+      className="text-sm rounded-xl px-4 py-3"
+      style={{ background: "rgba(220,0,0,0.12)", color: "#ff6b6b" }}
+      role="alert"
+    >
+      {children}
+    </p>
+  );
+}
